@@ -25,11 +25,34 @@
 #define ADC_VREF_TYPE ((0<<REFS1) | (1<<REFS0) | (0<<ADLAR))
 
 int CurrenFanTemperature;
-int CurrentSoldTemperature;
+//int CurrentSoldTemperature;
 int UserFanSpeed;
 int UserFanTemperature;
-int UserSoldTemperature;
+int NeedFanTemperature;
+//int UserSoldTemperature;
 
+int test = 0;
+int Gerkon_mode = 0;
+int FanSleep = 0;
+
+#define HEATER_SLEEP (Gerkon_mode > 0)
+
+#define GERKON_TIMING 5 // таймин переключения геркона
+#define SLEEP_FAN_TEMPERATURE 50 // таймин переключения геркона
+
+unsigned char bar0[] = {31,4,0,0,0,4,31,0};
+unsigned char bar1[] = {31,20,16,16,16,20,31,0};
+unsigned char bar2[] = {31,28,24,24,24,28,31,0};
+unsigned char bar3[] = {31,28,28,28,28,28,31,0};
+unsigned char bar4[] = {31,30,30,30,30,30,31,0};
+unsigned char bar5[] = {31,31,31,31,31,31,31,0};
+//unsigned char barS[] = {7,13,13,27,13,13,7,0};
+//unsigned char barF[] = {28,28,22,27,22,30,28,0};
+	
+unsigned char barS[] = {4,2,1,16,1,2,4,0};	
+unsigned char barF[] = {1,16,8,4,8,16,1,0};
+	
+	
 // Read the AD conversion result
 unsigned int read_adc(unsigned char adc_input)
 {
@@ -44,8 +67,6 @@ unsigned int read_adc(unsigned char adc_input)
 	return ADCW;
 }
 
-int test;
-
 ISR(TIMER1_OVF_vect)
 {
 	
@@ -54,6 +75,51 @@ ISR(TIMER1_OVF_vect)
 	TCNT1L=0x63C0 & 0xff;
 	// Place your code here
 	
+}
+
+char move;
+
+void DrawProgress(int value, int maxValue, int chartercount)
+{
+	int d;
+	int dd;
+	d = maxValue/(chartercount*5);
+	dd = maxValue/chartercount;
+	//lcd_putc('(');
+	for (int i = 0; i < chartercount; i++)
+	{
+		int c = value - i*dd;
+		if (c>=d*5) lcd_putc(5);
+		else
+		if (c>=d*4) lcd_putc(4);
+		else		
+		if (c>=d*3) lcd_putc(3);
+		else
+		if (c>=d*2) lcd_putc(2);
+		else
+		if (c>=d) lcd_putc(1);
+		else
+		lcd_putc(0);
+	}
+	//lcd_putc(')');
+	move++;
+	if (move == 1)
+	{
+		lcd_putc(6);
+		lcd_putc(6);
+	}
+	if (move == 2)
+	{
+			lcd_putc('>');
+			lcd_putc('>');
+	}
+	if (move == 3)
+	{
+		lcd_putc(7);
+		lcd_putc(7);
+		move = 0;
+	}
+
 }
 
 int main(void)
@@ -70,7 +136,7 @@ int main(void)
 	// Function: Bit6=In Bit5=In Bit4=In Bit3=In Bit2=In Bit1=In Bit0=In
 	DDRC=(0<<DDC6) | (0<<DDC5) | (0<<DDC4) | (0<<DDC3) | (0<<DDC2) | (0<<DDC1) | (0<<DDC0);
 	// State: Bit6=T Bit5=T Bit4=T Bit3=T Bit2=T Bit1=T Bit0=T
-	PORTC=(0<<PORTC6) | (0<<PORTC5) | (0<<PORTC4) | (0<<PORTC3) | (0<<PORTC2) | (0<<PORTC1) | (0<<PORTC0);
+	PORTC=(0<<PORTC6) | (0<<PORTC5) | (0<<PORTC4) | (0<<PORTC3) | (1<<PORTC2) | (0<<PORTC1) | (0<<PORTC0);
 
 	// Port D initialization
 	// Function: Bit7=Out Bit6=Out Bit5=Out Bit4=Out Bit3=Out Bit2=In Bit1=In Bit0=In
@@ -155,16 +221,48 @@ int main(void)
 	
 	
 	lcd_init();
+	lcd_loadchar(bar0, 0);
+	lcd_loadchar(bar1, 1);
+	lcd_loadchar(bar2, 2);
+	lcd_loadchar(bar3, 3);
+	lcd_loadchar(bar4, 4);
+	lcd_loadchar(bar5, 5);
+	lcd_loadchar(barS, 6);
+	lcd_loadchar(barF, 7);
+	
 	sei();
 	
     /* Replace with your application code */
     while (1) 
     {
-		//_delay_ms(20);
 		UserFanSpeed = read_adc(1);
 		UserFanTemperature = read_adc(0);
 		CurrenFanTemperature = read_adc(4);
-		CurrentSoldTemperature = read_adc(5);
+		
+		if (BitIsClear(PIND, PIND2))
+		{
+			if (Gerkon_mode < GERKON_TIMING) Gerkon_mode++;
+		}
+		else
+		{
+			if (Gerkon_mode > -GERKON_TIMING) Gerkon_mode--;
+		}
+		
+		if HEATER_SLEEP 
+			NeedFanTemperature = SLEEP_FAN_TEMPERATURE;
+		else 
+			NeedFanTemperature = UserFanTemperature;
+		
+			
+		if (CurrenFanTemperature < NeedFanTemperature)
+			SetBit(PORTB, PORTB2);
+		else
+			ClearBit(PORTB, PORTB2);
+		
+		test = UserFanSpeed/4;
+		if (OCR2A != test)
+		OCR2A = test;
+		
 		lcd_goto(LCD_1st_LINE,0);
 		lcd_itos(UserFanTemperature);
 		lcd_puts("C   Real:");
@@ -174,10 +272,9 @@ int main(void)
 		lcd_goto(LCD_2nd_LINE,0);
 		lcd_itos(UserFanSpeed/10.24);
 		lcd_puts("% ");
+		lcd_goto(LCD_2nd_LINE,4);
+		DrawProgress(test, 256, 10);
 		
-		test = UserFanSpeed/4;
-		if (OCR2A != test)
-		OCR2A = test;
     }
 }
 
