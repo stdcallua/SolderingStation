@@ -46,11 +46,6 @@ unsigned char bar2[] = {31,28,24,24,24,28,31,0};
 unsigned char bar3[] = {31,28,28,28,28,28,31,0};
 unsigned char bar4[] = {31,30,30,30,30,30,31,0};
 unsigned char bar5[] = {31,31,31,31,31,31,31,0};
-//unsigned char barS[] = {7,13,13,27,13,13,7,0};
-//unsigned char barF[] = {28,28,22,27,22,30,28,0};
-	
-unsigned char barS[] = {4,2,1,16,1,2,4,0};	
-unsigned char barF[] = {1,16,8,4,8,16,1,0};
 	
 	
 // Read the AD conversion result
@@ -85,7 +80,6 @@ void DrawProgress(int value, int maxValue, int chartercount)
 	int dd;
 	d = maxValue/(chartercount*5);
 	dd = maxValue/chartercount;
-	//lcd_putc('(');
 	for (int i = 0; i < chartercount; i++)
 	{
 		int c = value - i*dd;
@@ -101,25 +95,6 @@ void DrawProgress(int value, int maxValue, int chartercount)
 		else
 		lcd_putc(0);
 	}
-	//lcd_putc(')');
-	move++;
-	if (move == 1)
-	{
-		lcd_putc(6);
-		lcd_putc(6);
-	}
-	if (move == 2)
-	{
-			lcd_putc('>');
-			lcd_putc('>');
-	}
-	if (move == 3)
-	{
-		lcd_putc(7);
-		lcd_putc(7);
-		move = 0;
-	}
-
 }
 
 int main(void)
@@ -227,8 +202,6 @@ int main(void)
 	lcd_loadchar(bar3, 3);
 	lcd_loadchar(bar4, 4);
 	lcd_loadchar(bar5, 5);
-	lcd_loadchar(barS, 6);
-	lcd_loadchar(barF, 7);
 	
 	sei();
 	
@@ -259,9 +232,7 @@ int main(void)
 		else
 			ClearBit(PORTB, PORTB2);
 		
-		test = UserFanSpeed/4;
-		if (OCR2A != test)
-		OCR2A = test;
+		
 		
 		lcd_goto(LCD_1st_LINE,0);
 		lcd_itos(UserFanTemperature);
@@ -273,8 +244,12 @@ int main(void)
 		lcd_itos(UserFanSpeed/10.24);
 		lcd_puts("% ");
 		lcd_goto(LCD_2nd_LINE,4);
-		DrawProgress(test, 256, 10);
-		
+		test = UserFanSpeed/4;
+		if (OCR2A != test)
+		{
+			OCR2A = test;
+			DrawProgress(test, 256, 10);
+		}
     }
 }
 
