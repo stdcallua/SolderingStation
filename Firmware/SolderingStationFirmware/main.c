@@ -34,11 +34,13 @@ int NeedFanTemperature;
 int test = 0;
 int Gerkon_mode = 0;
 int FanSleep = 0;
+int time = 0;
 
 #define HEATER_SLEEP (Gerkon_mode > 0)
 
 #define GERKON_TIMING 5 // таймин переключения геркона
-#define SLEEP_FAN_TEMPERATURE 50 // таймин переключения геркона
+#define SLEEP_FAN_TEMPERATURE 50 // температура до которой астужать на подставке
+#define MIN_OFF 200//ADC вентилятора при котором отключать полностью нагреватель
 
 unsigned char bar0[] = {31,4,0,0,0,4,31,0};
 unsigned char bar1[] = {31,20,16,16,16,20,31,0};
@@ -66,10 +68,10 @@ ISR(TIMER1_OVF_vect)
 {
 	
 	// Reinitialize Timer1 value
-	TCNT1H=0x63C0 >> 8;
-	TCNT1L=0x63C0 & 0xff;
+	TCNT1H=0xBDC >> 8;
+	TCNT1L=0xBDC & 0xff;
 	// Place your code here
-	
+	time++;
 }
 
 char move;
@@ -134,28 +136,27 @@ int main(void)
 	
 	// Timer/Counter 1 initialization
 	// Clock source: System Clock
-	// Clock value: 2000,000 kHz
+	// Clock value: 62,500 kHz
 	// Mode: Normal top=0xFFFF
 	// OC1A output: Disconnected
 	// OC1B output: Disconnected
 	// Noise Canceler: Off
 	// Input Capture on Falling Edge
-	// Timer Period: 20 ms
+	// Timer Period: 1 s
 	// Timer1 Overflow Interrupt: On
 	// Input Capture Interrupt: Off
 	// Compare A Match Interrupt: Off
 	// Compare B Match Interrupt: Off
 	TCCR1A=(0<<COM1A1) | (0<<COM1A0) | (0<<COM1B1) | (0<<COM1B0) | (0<<WGM11) | (0<<WGM10);
-	TCCR1B=(0<<ICNC1) | (0<<ICES1) | (0<<WGM13) | (0<<WGM12) | (0<<CS12) | (1<<CS11) | (0<<CS10);
-	TCNT1H=0x63;
-	TCNT1L=0xC0;
+	TCCR1B=(0<<ICNC1) | (0<<ICES1) | (0<<WGM13) | (0<<WGM12) | (1<<CS12) | (0<<CS11) | (0<<CS10);
+	TCNT1H=0x0B;
+	TCNT1L=0xDC;
 	ICR1H=0x00;
 	ICR1L=0x00;
 	OCR1AH=0x00;
 	OCR1AL=0x00;
 	OCR1BH=0x00;
 	OCR1BL=0x00;
-
 	
 	// Timer/Counter 2 initialization
 	// Clock source: System Clock
@@ -172,7 +173,6 @@ int main(void)
 	TCNT2=0x00;
 	OCR2A=0xFF;
 	OCR2B=0x00;
-
 	
 	// Timer/Counter 0 Interrupt(s) initialization
 	TIMSK0=(0<<OCIE0B) | (0<<OCIE0A) | (0<<TOIE0);
@@ -194,6 +194,7 @@ int main(void)
 	ADCSRA=(1<<ADEN) | (0<<ADSC) | (0<<ADATE) | (0<<ADIF) | (0<<ADIE) | (1<<ADPS2) | (0<<ADPS1) | (0<<ADPS0);
 	ADCSRB=(0<<ADTS2) | (0<<ADTS1) | (0<<ADTS0);
 	
+	ClearBit(PORTB, PORTB2);
 	
 	lcd_init();
 	lcd_loadchar(bar0, 0);
@@ -211,45 +212,66 @@ int main(void)
 		UserFanSpeed = read_adc(1);
 		UserFanTemperature = read_adc(0);
 		CurrenFanTemperature = read_adc(4);
-		
-		if (BitIsClear(PIND, PIND2))
+		if (UserFanSpeed < MIN_OFF)//если скорость вентилятора ниже минимума
 		{
-			if (Gerkon_mode < GERKON_TIMING) Gerkon_mode++;
+			ClearBit(PORTB, PORTB2);//выключаем нагреватель
+			if (CurrenFanTemperature > SLEEP_FAN_TEMPERATURE)// если температура выше минимума то продувка на максимуме
+				OCR2A = 0xFF;
+			else
+				OCR2A = 0x00;//иначе выключаем вентилятор
 		}
 		else
 		{
-			if (Gerkon_mode > -GERKON_TIMING) Gerkon_mode--;
-		}
-		
-		if HEATER_SLEEP 
-			NeedFanTemperature = SLEEP_FAN_TEMPERATURE;
-		else 
-			NeedFanTemperature = UserFanTemperature;
-		
 			
-		if (CurrenFanTemperature < NeedFanTemperature)
+			if (BitIsClear(PIND, PIND2))
+			{
+				if (Gerkon_mode < GERKON_TIMING) Gerkon_mode++;
+			}
+			else
+			{
+				if (Gerkon_mode > -GERKON_TIMING) Gerkon_mode--;
+			}
+			
+			if HEATER_SLEEP
+			NeedFanTemperature = SLEEP_FAN_TEMPERATURE;
+			else
+			NeedFanTemperature = UserFanTemperature;
+			
+			
+			if (CurrenFanTemperature < NeedFanTemperature)
 			SetBit(PORTB, PORTB2);
-		else
+			else
 			ClearBit(PORTB, PORTB2);
-		
-		
+			
+		}
 		
 		lcd_goto(LCD_1st_LINE,0);
 		lcd_itos(UserFanTemperature);
-		lcd_puts("C   Real:");
+		lcd_puts("C  R:");
 		lcd_itos(CurrenFanTemperature);
-		lcd_puts("C  ");
-		
+		lcd_puts("C T:");
+		lcd_itos(time);
 		lcd_goto(LCD_2nd_LINE,0);
-		lcd_itos(UserFanSpeed/10.24);
-		lcd_puts("% ");
-		lcd_goto(LCD_2nd_LINE,4);
-		test = UserFanSpeed/4;
-		if (OCR2A != test)
+		if (UserFanSpeed < MIN_OFF)
 		{
-			OCR2A = test;
-			DrawProgress(test, 256, 10);
+			lcd_puts("OFF");
 		}
+		else
+		{
+			int speed = (UserFanSpeed-MIN_OFF)/8.24;
+			lcd_itos(speed);
+			lcd_puts("% ");
+			test = speed*1.28 + 128;
+			if (OCR2A != test)
+			{
+				OCR2A = test;
+			}
+		}
+		lcd_goto(LCD_2nd_LINE,4);
+		if (OCR2A < 128)
+			DrawProgress(0, 128, 10);
+		else
+			DrawProgress(OCR2A-128, 128, 10);
     }
 }
 
