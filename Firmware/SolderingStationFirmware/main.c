@@ -36,6 +36,11 @@ int Gerkon_mode = 0;
 int FanSleep = 0;
 int time = 0;
 
+#define SAMPLING 32
+
+int temperatures[SAMPLING];
+int curTempSample;
+
 #define HEATER_SLEEP (Gerkon_mode > 0)
 
 #define GERKON_TIMING 5 // таймин переключения геркона
@@ -160,18 +165,18 @@ int main(void)
 	
 	// Timer/Counter 2 initialization
 	// Clock source: System Clock
-	// Clock value: 500,000 kHz
+	// Clock value: 16000,000 kHz
 	// Mode: Fast PWM top=0xFF
 	// OC2A output: Non-Inverted PWM
 	// OC2B output: Disconnected
-	// Timer Period: 0,512 ms
+	// Timer Period: 0,016 ms
 	// Output Pulse(s):
-	// OC2A Period: 0,512 ms Width: 0,512 ms
+	// OC2A Period: 0,016 ms Width: 0 us
 	ASSR=(0<<EXCLK) | (0<<AS2);
 	TCCR2A=(1<<COM2A1) | (0<<COM2A0) | (0<<COM2B1) | (0<<COM2B0) | (1<<WGM21) | (1<<WGM20);
-	TCCR2B=(0<<WGM22) | (0<<CS22) | (1<<CS21) | (1<<CS20);
+	TCCR2B=(0<<WGM22) | (0<<CS22) | (0<<CS21) | (1<<CS20);
 	TCNT2=0x00;
-	OCR2A=0xFF;
+	OCR2A=0x00;
 	OCR2B=0x00;
 	
 	// Timer/Counter 0 Interrupt(s) initialization
@@ -205,13 +210,30 @@ int main(void)
 	lcd_loadchar(bar5, 5);
 	
 	sei();
-	
+	curTempSample = 0;
     /* Replace with your application code */
     while (1) 
     {
 		UserFanSpeed = read_adc(1);
 		UserFanTemperature = read_adc(0);
-		CurrenFanTemperature = read_adc(4);
+		//temperatures[curTempSample] = read_adc(4);
+		//curTempSample++;
+		//if (curTempSample >= SAMPLING)
+		//{
+		//	CurrenFanTemperature=0;
+		//	for (int i = 0; i<SAMPLING;i++)
+		//		CurrenFanTemperature += temperatures[curTempSample];
+		//	CurrenFanTemperature = CurrenFanTemperature/SAMPLING;
+		//	curTempSample = 0;
+		//}
+		if (BitIsSet(PORTB, PORTB2))
+		{
+			ClearBit(PORTB, PORTB2);
+			CurrenFanTemperature = read_adc(4);
+			SetBit(PORTB, PORTB2);
+		} else CurrenFanTemperature = read_adc(4);
+
+
 		if (UserFanSpeed < MIN_OFF)//если скорость вентилятора ниже минимума
 		{
 			ClearBit(PORTB, PORTB2);//выключаем нагреватель
@@ -237,11 +259,19 @@ int main(void)
 			else
 			NeedFanTemperature = UserFanTemperature;
 			
-			
-			if (CurrenFanTemperature < NeedFanTemperature)
-			SetBit(PORTB, PORTB2);
+			NeedFanTemperature = UserFanTemperature;
+
+			if (NeedFanTemperature < 50)
+			{
+				ClearBit(PORTB, PORTB2);
+			}
 			else
-			ClearBit(PORTB, PORTB2);
+			{
+				if (CurrenFanTemperature < NeedFanTemperature)
+					SetBit(PORTB, PORTB2);
+				else
+					ClearBit(PORTB, PORTB2);
+			}
 			
 		}
 		
