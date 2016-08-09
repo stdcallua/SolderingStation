@@ -35,6 +35,8 @@ int test = 0;
 int Gerkon_mode = 0;
 int FanSleep = 0;
 int time = 0;
+int min;
+int sec;
 
 #define SAMPLING 32
 
@@ -44,7 +46,7 @@ int curTempSample;
 #define HEATER_SLEEP (Gerkon_mode > 0)
 
 #define GERKON_TIMING 5 // таймин переключения геркона
-#define SLEEP_FAN_TEMPERATURE 50 // температура до которой астужать на подставке
+#define SLEEP_FAN_TEMPERATURE 60 // температура до которой астужать на подставке
 #define MIN_OFF 200//ADC вентилятора при котором отключать полностью нагреватель
 
 unsigned char bar0[] = {31,4,0,0,0,4,31,0};
@@ -76,7 +78,16 @@ ISR(TIMER1_OVF_vect)
 	TCNT1H=0xBDC >> 8;
 	TCNT1L=0xBDC & 0xff;
 	// Place your code here
-	time++;
+	if (UserFanSpeed > MIN_OFF)
+	{
+		time++;
+		min = time/60;
+		sec = time-(min*60);
+	}
+	else
+	{
+		time=0;min=0;sec=0;
+	}
 }
 
 char move;
@@ -215,7 +226,7 @@ int main(void)
     while (1) 
     {
 		UserFanSpeed = read_adc(1);
-		UserFanTemperature = read_adc(0);
+		UserFanTemperature = read_adc(0)*0.5;
 		//temperatures[curTempSample] = read_adc(4);
 		//curTempSample++;
 		//if (curTempSample >= SAMPLING)
@@ -232,7 +243,8 @@ int main(void)
 			CurrenFanTemperature = read_adc(4);
 			SetBit(PORTB, PORTB2);
 		} else CurrenFanTemperature = read_adc(4);
-
+		
+		CurrenFanTemperature = 0.72*CurrenFanTemperature+56.5;
 
 		if (UserFanSpeed < MIN_OFF)//если скорость вентилятора ниже минимума
 		{
@@ -280,7 +292,10 @@ int main(void)
 		lcd_puts("C  R:");
 		lcd_itos(CurrenFanTemperature);
 		lcd_puts("C T:");
-		lcd_itos(time);
+		lcd_itos(min);
+		lcd_puts(":");
+		lcd_itos(sec);
+		lcd_puts(" ");
 		lcd_goto(LCD_2nd_LINE,0);
 		if (UserFanSpeed < MIN_OFF)
 		{
